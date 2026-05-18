@@ -1,0 +1,691 @@
+openapi: 3.0.3
+info:
+  title: Pasarela de Pagos - API Orquestador
+  description: |
+    API central de la Pasarela de Pagos para el sistema de venta de boletas.
+    
+    ## Servicios
+    - **Orquestador de Pagos**: Recibe, enruta y registra transacciones con tarjetas Visa y Mastercard.
+    - **Tesorería**: Liquidación batch y generación de reportes por empresa.
+    - **Logs**: Consulta de bitácoras de transacciones.
+    
+    ## Autenticación
+    Todas las rutas de pagos y tesorería requieren el header `X-Api-Key` con la API key de la empresa registrada.
+    
+    ## Control de Duplicados
+    Cada pago debe incluir una `referencia_externa` única por intento de compra.
+    Si se envía la misma referencia dos veces, la segunda solicitud será rechazada con HTTP 409.
+  version: 1.0.0
+  contact:
+    name: Event Management Software II
+    url: https://github.com/Event-Management-Software-II
+
+servers:
+  - url: http://localhost:3000
+    description: Servidor de desarrollo local
+  - url: https://payment-orchestrator.example.com
+    description: Producción
+
+tags:
+  - name: Pagos
+    description: Procesamiento y consulta de transacciones
+  - name: Tesorería
+    description: Liquidación masiva y reportes financieros
+  - name: Logs
+    description: Bitácora de eventos del sistema
+  - name: Sistema
+    description: Estado del servicio
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: API Key de la empresa registrada en la pasarela.
+
+  schemas:
+    # ─── Respuesta base ──────────────────────────────────────────────────────
+    RespuestaOk:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    RespuestaError:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "Descripción del error"
+        detalles:
+          type: array
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+
+    # ─── Pago ────────────────────────────────────────────────────────────────
+    SolicitudPago:
+      type: object
+      required:
+        - monto
+        - pan
+        - cvv
+        - titular_tarjeta
+        - referencia_externa
+      properties:
+        monto:
+          type: number
+          format: float
+          minimum: 0.01
+          example: 150000.00
+          description: Monto total de la transacción.
+        moneda:
+          type: string
+          enum: [COP, USD, EUR]
+          default: COP
+          example: COP
+        pan:
+          type: string
+          minLength: 13
+          maxLength: 19
+          pattern: '^\d+$'
+          example: "4111111111111111"
+          description: "Número completo de la tarjeta. Visa: empieza en 4. Mastercard: empieza en 5."
+        cvv:
+          type: string
+          pattern: '^\d{3,4}$'
+          example: "123"
+        titular_tarjeta:
+          type: string
+          example: "Juan Pérez García"
+        referencia_externa:
+          type: string
+          minLength: 4
+          maxLength: 100
+          example: "BOLETA-ORD-2024-00789"
+          description: ID único del intento de compra. Usado para prevenir cobros duplicados.
+        descripcion:
+          type: string
+          maxLength: 255
+          example: "Compra de 2 boletas - Concierto Rock Bogotá"
+
+    RespuestaPago:
+      allOf:
+        - $ref: '#/components/schemas/RespuestaOk'
+        - type: object
+          properties:
+            transaccion_id:
+              type: string
+              format: uuid
+              example: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            estado:
+              type: string
+              enum: [APROBADO, RECHAZADO]
+              example: APROBADO
+            tipo_tarjeta:
+              type: string
+              enum: [VISA, MASTERCARD]
+              example: VISA
+            pan_enmascarado:
+              type: string
+              example: "****1111"
+            monto:
+              type: number
+              example: 150000.00
+            moneda:
+              type: string
+              example: COP
+            fecha_transaccion:
+              type: string
+              format: date-time
+              example: "2024-10-15T14:32:00.000Z"
+            mensaje:
+              type: string
+              example: "Pago procesado exitosamente. La boleta puede ser confirmada."
+
+    Transaccion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        empresa_id:
+          type: string
+          format: uuid
+        referencia_externa:
+          type: string
+        monto:
+          type: number
+        moneda:
+          type: string
+        tipo_tarjeta:
+          type: string
+          enum: [VISA, MASTERCARD]
+        pan_enmascarado:
+          type: string
+        titular_tarjeta:
+          type: string
+        estado:
+          type: string
+          enum: [PENDIENTE, APROBADO, RECHAZADO, NO_LIQUIDADO, LIQUIDADO]
+        fecha_transaccion:
+          type: string
+          format: date-time
+        fecha_liquidacion:
+          type: string
+          format: date-time
+          nullable: true
+        descripcion:
+          type: string
+          nullable: true
+
+    # ─── Tesorería ────────────────────────────────────────────────────────────
+    SolicitudLiquidacion:
+      type: object
+      required:
+        - transaccion_ids
+      properties:
+        transaccion_ids:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
+          example:
+            - "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+            - "8bc93a12-1234-5678-abcd-ef0123456789"
+
+    RespuestaLiquidacion:
+      allOf:
+        - $ref: '#/components/schemas/RespuestaOk'
+        - type: object
+          properties:
+            mensaje:
+              type: string
+              example: "3 transacción(es) liquidada(s) exitosamente."
+            liquidadas:
+              type: integer
+              example: 3
+            no_procesadas:
+              type: array
+              description: IDs que no pudieron liquidarse (no existen o no son de la empresa)
+              items:
+                type: string
+                format: uuid
+            fecha_liquidacion:
+              type: string
+              format: date-time
+
+    RespuestaReporte:
+      allOf:
+        - $ref: '#/components/schemas/RespuestaOk'
+        - type: object
+          properties:
+            empresa:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                nombre:
+                  type: string
+            filtros:
+              type: object
+              properties:
+                fecha_inicio:
+                  type: string
+                  format: date
+                  nullable: true
+                fecha_fin:
+                  type: string
+                  format: date
+                  nullable: true
+            resumen:
+              type: object
+              properties:
+                total_transacciones:
+                  type: integer
+                  example: 15
+                totales_por_moneda:
+                  type: object
+                  example:
+                    COP: 2250000.00
+                    USD: 150.00
+            transacciones:
+              type: array
+              items:
+                $ref: '#/components/schemas/Transaccion'
+
+    # ─── Logs ─────────────────────────────────────────────────────────────────
+    LogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        transaccion_id:
+          type: string
+          format: uuid
+          nullable: true
+        nivel:
+          type: string
+          enum: [INFO, WARN, ERROR]
+        evento:
+          type: string
+          example: "PAGO_APROBADO"
+        detalle:
+          type: object
+        ip_origen:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+paths:
+  # ─── HEALTH ──────────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Sistema]
+      summary: Verificar estado del servicio
+      description: Retorna el estado actual de la pasarela de pagos.
+      responses:
+        '200':
+          description: Servicio operativo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: true
+                  servicio:
+                    type: string
+                    example: "Pasarela de Pagos - Orquestador"
+                  version:
+                    type: string
+                    example: "1.0.0"
+                  timestamp:
+                    type: string
+                    format: date-time
+                  ambiente:
+                    type: string
+                    example: "development"
+
+  # ─── PAGOS ───────────────────────────────────────────────────────────────────
+  /api/pagos/procesar-pago:
+    post:
+      tags: [Pagos]
+      summary: Procesar un pago con tarjeta de crédito
+      description: |
+        Flujo completo de orquestación de un pago:
+        1. Detecta si la tarjeta es Visa (PAN empieza en 4) o Mastercard (PAN empieza en 5).
+        2. Verifica que la empresa esté autorizada (via X-Api-Key).
+        3. Previene duplicados verificando la `referencia_externa`.
+        4. Consulta con el servicio de tarjetas si el cliente está registrado.
+        5. Registra la transacción con estado `NO_LIQUIDADO`.
+        6. Envía el pago al proveedor y actualiza el estado a `APROBADO` o `RECHAZADO`.
+      security:
+        - ApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudPago'
+            examples:
+              visa:
+                summary: Pago con Visa
+                value:
+                  monto: 150000.00
+                  moneda: COP
+                  pan: "4111111111111111"
+                  cvv: "123"
+                  titular_tarjeta: "Juan Pérez García"
+                  referencia_externa: "BOLETA-ORD-2024-00789"
+                  descripcion: "Compra 2 boletas - Concierto Rock"
+              mastercard:
+                summary: Pago con Mastercard
+                value:
+                  monto: 75000.00
+                  moneda: COP
+                  pan: "5500005555555559"
+                  cvv: "321"
+                  titular_tarjeta: "María López"
+                  referencia_externa: "BOLETA-ORD-2024-00790"
+      responses:
+        '201':
+          description: Pago aprobado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaPago'
+        '402':
+          description: Pago rechazado por el proveedor o cliente no registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+              example:
+                ok: false
+                estado: RECHAZADO
+                error: "El pago fue rechazado por el proveedor de tarjetas."
+        '409':
+          description: Pago duplicado - ya existe una transacción con esa referencia_externa
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                  transaccion_id:
+                    type: string
+                    format: uuid
+                  estado:
+                    type: string
+        '422':
+          description: Datos de entrada inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '401':
+          description: Falta el header X-Api-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '403':
+          description: API Key inválida o empresa no autorizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '502':
+          description: Error de comunicación con el servicio de tarjetas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+  /api/pagos/{id}:
+    get:
+      tags: [Pagos]
+      summary: Consultar estado de una transacción
+      description: Retorna el detalle de una transacción. Solo puede consultarse si pertenece a la empresa autenticada.
+      security:
+        - ApiKey: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID único de la transacción
+      responses:
+        '200':
+          description: Transacción encontrada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/RespuestaOk'
+                  - type: object
+                    properties:
+                      transaccion:
+                        $ref: '#/components/schemas/Transaccion'
+        '404':
+          description: Transacción no encontrada o no pertenece a la empresa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+  # ─── TESORERÍA ────────────────────────────────────────────────────────────────
+  /api/tesoreria/liquidar:
+    post:
+      tags: [Tesorería]
+      summary: Liquidación masiva (Batch) de transacciones
+      description: |
+        Cambia el estado de múltiples transacciones APROBADAS a LIQUIDADO en una sola operación.
+        
+        **Validaciones:**
+        - Solo liquida transacciones con estado `APROBADO`.
+        - Solo puede liquidar transacciones de la empresa autenticada.
+        - Retorna los IDs que no pudieron procesarse.
+      security:
+        - ApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudLiquidacion'
+            example:
+              transaccion_ids:
+                - "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                - "8bc93a12-1234-5678-abcd-ef0123456789"
+      responses:
+        '200':
+          description: Liquidación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaLiquidacion'
+        '404':
+          description: No se encontraron transacciones elegibles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+        '422':
+          description: Datos de entrada inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+
+  /api/tesoreria/reporte:
+    get:
+      tags: [Tesorería]
+      summary: Reporte de transacciones pendientes de liquidar
+      description: |
+        Lista las transacciones en estado `APROBADO` o `NO_LIQUIDADO` de la empresa autenticada.
+        
+        **Incluye:**
+        - Lista de transacciones pendientes.
+        - Total a pagar agrupado por moneda.
+        
+        **Validaciones:**
+        - Privacidad: solo muestra transacciones de la empresa autenticada.
+        - Coherencia: `fecha_inicio` no puede ser mayor que `fecha_fin`.
+        
+        Ambas fechas son opcionales. Si no se proveen, retorna todas las pendientes.
+      security:
+        - ApiKey: []
+      parameters:
+        - name: fecha_inicio
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: "2024-10-01"
+          description: Filtrar desde esta fecha (inclusive). Formato ISO 8601.
+        - name: fecha_fin
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: "2024-10-31"
+          description: Filtrar hasta esta fecha (inclusive, incluye todo el día). Formato ISO 8601.
+      responses:
+        '200':
+          description: Reporte generado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaReporte'
+        '422':
+          description: Fechas inválidas o incoherentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
+              examples:
+                incoherencia:
+                  summary: Fecha inicio mayor a fecha fin
+                  value:
+                    ok: false
+                    error: "La fecha_inicio no puede ser mayor que la fecha_fin."
+
+  /api/tesoreria/resumen:
+    get:
+      tags: [Tesorería]
+      summary: Resumen estadístico de transacciones por estado
+      description: Retorna conteo y sumatoria de montos agrupados por estado para la empresa autenticada.
+      security:
+        - ApiKey: []
+      responses:
+        '200':
+          description: Resumen generado
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/RespuestaOk'
+                  - type: object
+                    properties:
+                      empresa:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          nombre:
+                            type: string
+                      estadisticas:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            estado:
+                              type: string
+                            cantidad:
+                              type: integer
+                            total:
+                              type: number
+
+  # ─── LOGS ─────────────────────────────────────────────────────────────────────
+  /api/logs:
+    get:
+      tags: [Logs]
+      summary: Listar logs de transacciones desde la base de datos
+      description: Retorna logs almacenados en BD. Filtrable por transaccion_id y nivel.
+      parameters:
+        - name: transaccion_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: Filtrar logs de una transacción específica
+        - name: nivel
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [INFO, WARN, ERROR]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Lista de logs
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/RespuestaOk'
+                  - type: object
+                    properties:
+                      total:
+                        type: integer
+                      logs:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/LogEntry'
+
+  /api/logs/archivo:
+    get:
+      tags: [Logs]
+      summary: Leer logs desde archivos de Winston
+      description: Lee las últimas N líneas de los archivos de log generados por Winston.
+      parameters:
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [combined, error, transactions]
+            default: combined
+          description: Tipo de archivo de log a leer
+        - name: lineas
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 100
+          description: Número de líneas a retornar (más recientes primero)
+      responses:
+        '200':
+          description: Contenido del archivo de log
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/RespuestaOk'
+                  - type: object
+                    properties:
+                      archivo:
+                        type: string
+                        example: "combined.log"
+                      total_lineas:
+                        type: integer
+                      retornadas:
+                        type: integer
+                      logs:
+                        type: array
+                        items:
+                          type: object
+        '404':
+          description: Archivo de log no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaError'
