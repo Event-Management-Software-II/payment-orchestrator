@@ -1,70 +1,70 @@
-const { LogTransaccion } = require('../models');
-const { Op } = require('sequelize');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
+const prisma = require('../prisma');
 
-/**
- * GET /api/logs
- * Lista logs almacenados en BD. Filtrable por transaccion_id y nivel.
- */
-const listarLogs = async (req, res) => {
-  const { transaccion_id, nivel, limit = 100, offset = 0 } = req.query;
+const listLogs = async (req, res) => {
+  const transactionId = req.query.transactionId;
+  const { level, limit = 100, offset = 0 } = req.query;
 
   const where = {};
-  if (transaccion_id) where.transaccion_id = transaccion_id;
-  if (nivel) where.nivel = nivel.toUpperCase();
+  if (transactionId) where.transactionId = transactionId;
+  if (level) where.level = level.toUpperCase();
 
-  const logs = await LogTransaccion.findAndCountAll({
-    where,
-    order: [['createdAt', 'DESC']],
-    limit: Math.min(parseInt(limit), 500),
-    offset: parseInt(offset),
-  });
+  const take = Math.min(parseInt(limit), 500);
+  const skip = parseInt(offset);
+  const [total, logs] = await Promise.all([
+    prisma.transactionLog.count({ where }),
+    prisma.transactionLog.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take,
+      skip,
+    }),
+  ]);
 
   return res.json({
     ok: true,
-    total: logs.count,
+    total,
     limit: parseInt(limit),
     offset: parseInt(offset),
-    logs: logs.rows,
+    logs,
   });
 };
 
-/**
- * GET /api/logs/archivo
- * Lee los logs del archivo combined.log (últimas N líneas).
- */
-const leerArchivoLog = async (req, res) => {
-  const { lineas = 100, tipo = 'combined' } = req.query;
-  const archivos = {
+const readLogFile = async (req, res) => {
+  const { lines = 100, type = 'combined' } = req.query;
+  const files = {
     combined: 'combined.log',
     error: 'error.log',
     transactions: 'transactions.log',
   };
 
-  const archivo = archivos[tipo] || archivos.combined;
-  const rutaLog = path.join(__dirname, '../../logs', archivo);
+  const fileName = files[type] || files.combined;
+  const logPath = path.join(__dirname, '../../logs', fileName);
 
-  if (!fs.existsSync(rutaLog)) {
-    return res.status(404).json({ ok: false, error: 'Archivo de log no encontrado aún.' });
+  if (!fs.existsSync(logPath)) {
+    return res.status(404).json({ ok: false, error: 'Log file not found yet.' });
   }
 
-  const contenido = fs.readFileSync(rutaLog, 'utf-8');
-  const lineasArray = contenido.split('\n').filter(Boolean);
-  const ultimasLineas = lineasArray.slice(-parseInt(lineas));
+  const content = fs.readFileSync(logPath, 'utf-8');
+  const allLines = content.split('\n').filter(Boolean);
+  const latestLines = allLines.slice(-parseInt(lines));
 
-  const logs = ultimasLineas.map(linea => {
-    try { return JSON.parse(linea); }
-    catch { return { raw: linea }; }
+  const logs = latestLines.map((line) => {
+    try {
+      return JSON.parse(line);
+    } catch {
+      return { raw: line };
+    }
   });
 
   return res.json({
     ok: true,
-    archivo,
-    total_lineas: lineasArray.length,
-    retornadas: logs.length,
-    logs: logs.reverse(), // Más recientes primero
+    file: fileName,
+    totalLines: allLines.length,
+    returned: logs.length,
+    logs: logs.reverse(),
   });
 };
 
-module.exports = { listarLogs, leerArchivoLog };
+module.exports = { listLogs, readLogFile };

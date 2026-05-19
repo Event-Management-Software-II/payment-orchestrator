@@ -1,39 +1,43 @@
 require('dotenv').config();
-const { sequelize, Empresa, syncDB } = require('../models');
-const { v4: uuidv4 } = require('uuid');
+const prisma = require('../prisma');
+
+const companies = [
+  {
+    id: 'company-tickets-001',
+    name: 'Ticket Sales System Inc.',
+    taxId: '900123456-7',
+    isActive: true,
+    apiKey: 'sk_tickets_abc123def456',
+  },
+  {
+    id: 'company-events-002',
+    name: 'UPTC Cultural Events',
+    taxId: '800987654-3',
+    isActive: true,
+    apiKey: 'sk_events_xyz789uvw012',
+  },
+];
 
 const seed = async () => {
-  await syncDB();
-
-  const empresas = [
-    {
-      id: 'emp-boletas-001',
-      nombre: 'Sistema de Venta de Boletas SA',
-      nit: '900123456-7',
-      activa: true,
-      api_key: 'sk_boletas_abc123def456',
-    },
-    {
-      id: 'emp-eventos-002',
-      nombre: 'Eventos Culturales UPTC',
-      nit: '800987654-3',
-      activa: true,
-      api_key: 'sk_eventos_xyz789uvw012',
-    },
-  ];
-
-  for (const empresa of empresas) {
-    await Empresa.upsert(empresa);
-    console.log(`✅ Empresa creada/actualizada: ${empresa.nombre}`);
+  for (const company of companies) {
+    await prisma.company.upsert({
+      where: { id: company.id },
+      update: company,
+      create: company,
+    });
+    console.log(`Company created/updated: ${company.name}`);
   }
 
-  console.log('\n🌱 Seed completado exitosamente');
-  console.log('\n📋 API Keys para pruebas:');
-  empresas.forEach(e => console.log(`  ${e.nombre}: ${e.api_key}`));
-  process.exit(0);
+  console.log('\nSeed completed successfully');
+  console.log('\nTest API keys:');
+  companies.forEach((company) => console.log(`  ${company.name}: ${company.apiKey}`));
 };
 
-seed().catch(err => {
-  console.error('❌ Error en seed:', err);
-  process.exit(1);
-});
+seed()
+  .catch((error) => {
+    console.error('Seed failed:', error);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

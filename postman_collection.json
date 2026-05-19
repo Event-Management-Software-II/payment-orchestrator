@@ -1,411 +1,88 @@
 {
   "info": {
-    "name": "Pasarela de Pagos - Colección Completa",
-    "_postman_id": "payment-gateway-collection-v1",
-    "description": "Colección completa de requests para la Pasarela de Pagos (Orquestador). Incluye flujos de pago Visa/Mastercard, tesorería y logs.\n\n## Setup\n1. Crear un entorno en Postman con las variables listadas.\n2. Correr el seed: `npm run seed`\n3. Iniciar el servidor: `npm run dev`",
+    "name": "Payment Gateway - Complete Collection",
+    "description": "Requests for the payment gateway orchestrator. Run `npm run seed` before using the company API keys.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "BASE_URL", "value": "http://localhost:3000", "type": "string" },
-    { "key": "API_KEY_BOLETAS", "value": "sk_boletas_abc123def456", "type": "string" },
-    { "key": "API_KEY_EVENTOS", "value": "sk_eventos_xyz789uvw012", "type": "string" },
-    { "key": "TRANSACCION_ID", "value": "", "type": "string", "description": "Se auto-rellena después de procesar un pago" }
+    { "key": "API_KEY_TICKETS", "value": "sk_tickets_abc123def456", "type": "string" },
+    { "key": "TRANSACTION_ID", "value": "", "type": "string" }
   ],
   "item": [
     {
-      "name": "🏥 Sistema",
-      "item": [
-        {
-          "name": "Health Check",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{BASE_URL}}/health", "host": ["{{BASE_URL}}"], "path": ["health"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('ok es true', () => pm.expect(pm.response.json().ok).to.be.true);"
-                ]
-              }
-            }
-          ]
-        }
-      ]
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/health"
+      }
     },
     {
-      "name": "💳 Pagos",
-      "item": [
-        {
-          "name": "1. Procesar Pago - Visa (Exitoso)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monto\": 150000.00,\n  \"moneda\": \"COP\",\n  \"pan\": \"4111111111111111\",\n  \"cvv\": \"123\",\n  \"titular_tarjeta\": \"Juan Pérez García\",\n  \"referencia_externa\": \"BOLETA-ORD-2024-00789\",\n  \"descripcion\": \"Compra 2 boletas - Concierto Rock Bogotá\"\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/pagos/procesar-pago", "host": ["{{BASE_URL}}"], "path": ["api", "pagos", "procesar-pago"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "const json = pm.response.json();",
-                  "pm.test('Pago aprobado - Status 201', () => pm.response.to.have.status(201));",
-                  "pm.test('Pago aprobado', () => pm.expect(json.estado).to.equal('APROBADO'));",
-                  "pm.test('Tipo de tarjeta VISA', () => pm.expect(json.tipo_tarjeta).to.equal('VISA'));",
-                  "if (json.transaccion_id) pm.collectionVariables.set('TRANSACCION_ID', json.transaccion_id);"
-                ]
-              }
-            }
-          ]
+      "name": "Process Mastercard Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{API_KEY_TICKETS}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 75000,\n  \"currency\": \"COP\",\n  \"pan\": \"5500005555555559\",\n  \"cvv\": \"321\",\n  \"cardHolder\": \"Jane Doe\",\n  \"externalReference\": \"TICKET-ORDER-001\",\n  \"description\": \"One VIP ticket\"\n}"
         },
-        {
-          "name": "2. Procesar Pago - Mastercard (Exitoso)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monto\": 75000.00,\n  \"moneda\": \"COP\",\n  \"pan\": \"5500005555555559\",\n  \"cvv\": \"321\",\n  \"titular_tarjeta\": \"María López Rodríguez\",\n  \"referencia_externa\": \"BOLETA-ORD-2024-00790\",\n  \"descripcion\": \"Compra 1 boleta VIP\"\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/pagos/procesar-pago", "host": ["{{BASE_URL}}"], "path": ["api", "pagos", "procesar-pago"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "const json = pm.response.json();",
-                  "pm.test('Tipo de tarjeta MASTERCARD', () => pm.expect(json.tipo_tarjeta).to.equal('MASTERCARD'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "3. Procesar Pago - DUPLICADO (debe dar 409)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monto\": 150000.00,\n  \"moneda\": \"COP\",\n  \"pan\": \"4111111111111111\",\n  \"cvv\": \"123\",\n  \"titular_tarjeta\": \"Juan Pérez García\",\n  \"referencia_externa\": \"BOLETA-ORD-2024-00789\",\n  \"descripcion\": \"Mismo intento de compra duplicado\"\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/pagos/procesar-pago", "host": ["{{BASE_URL}}"], "path": ["api", "pagos", "procesar-pago"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Duplicado detectado - Status 409', () => pm.response.to.have.status(409));",
-                  "pm.test('ok es false', () => pm.expect(pm.response.json().ok).to.be.false);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "4. Procesar Pago - Sin API Key (debe dar 401)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monto\": 50000,\n  \"pan\": \"4111111111111111\",\n  \"cvv\": \"123\",\n  \"titular_tarjeta\": \"Test\",\n  \"referencia_externa\": \"REF-SIN-AUTH-001\"\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/pagos/procesar-pago", "host": ["{{BASE_URL}}"], "path": ["api", "pagos", "procesar-pago"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('Sin auth - Status 401', () => pm.response.to.have.status(401));"]
-              }
-            }
-          ]
-        },
-        {
-          "name": "5. Procesar Pago - Tarjeta NO reconocida (debe dar 422)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"monto\": 50000,\n  \"pan\": \"9876543210123456\",\n  \"cvv\": \"999\",\n  \"titular_tarjeta\": \"Test Amex\",\n  \"referencia_externa\": \"REF-AMEX-001\"\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/pagos/procesar-pago", "host": ["{{BASE_URL}}"], "path": ["api", "pagos", "procesar-pago"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('Tarjeta no reconocida - Status 422', () => pm.response.to.have.status(422));"]
-              }
-            }
-          ]
-        },
-        {
-          "name": "6. Consultar Transacción",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }],
-            "url": {
-              "raw": "{{BASE_URL}}/api/pagos/{{TRANSACCION_ID}}",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "pagos", "{{TRANSACCION_ID}}"]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Consulta exitosa - Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('ok es true', () => pm.expect(pm.response.json().ok).to.be.true);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "7. Consultar Transacción de Otra Empresa (debe dar 404)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_EVENTOS}}" }],
-            "url": {
-              "raw": "{{BASE_URL}}/api/pagos/{{TRANSACCION_ID}}",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "pagos", "{{TRANSACCION_ID}}"]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('Privacidad - Status 404', () => pm.response.to.have.status(404));"]
-              }
-            }
-          ]
-        }
-      ]
+        "url": "{{BASE_URL}}/api/payments/process-payment"
+      }
     },
     {
-      "name": "🏦 Tesorería",
-      "item": [
-        {
-          "name": "1. Resumen Estadístico",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }],
-            "url": { "raw": "{{BASE_URL}}/api/tesoreria/resumen", "host": ["{{BASE_URL}}"], "path": ["api", "tesoreria", "resumen"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Tiene estadísticas', () => pm.expect(pm.response.json()).to.have.property('estadisticas'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "2. Reporte - Sin filtros (todas las pendientes)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }],
-            "url": { "raw": "{{BASE_URL}}/api/tesoreria/reporte", "host": ["{{BASE_URL}}"], "path": ["api", "tesoreria", "reporte"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "const json = pm.response.json();",
-                  "pm.test('Tiene resumen', () => pm.expect(json).to.have.property('resumen'));",
-                  "pm.test('Tiene transacciones', () => pm.expect(json).to.have.property('transacciones'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "3. Reporte - Con rango de fechas",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }],
-            "url": {
-              "raw": "{{BASE_URL}}/api/tesoreria/reporte?fecha_inicio=2024-01-01&fecha_fin=2024-12-31",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "tesoreria", "reporte"],
-              "query": [
-                { "key": "fecha_inicio", "value": "2024-01-01" },
-                { "key": "fecha_fin", "value": "2024-12-31" }
-              ]
-            }
-          }
-        },
-        {
-          "name": "4. Reporte - Fechas incoherentes (debe dar 422)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }],
-            "url": {
-              "raw": "{{BASE_URL}}/api/tesoreria/reporte?fecha_inicio=2024-12-31&fecha_fin=2024-01-01",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "tesoreria", "reporte"],
-              "query": [
-                { "key": "fecha_inicio", "value": "2024-12-31" },
-                { "key": "fecha_fin", "value": "2024-01-01" }
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('Fechas incoherentes - Status 422', () => pm.response.to.have.status(422));"]
-              }
-            }
-          ]
-        },
-        {
-          "name": "5. Liquidación Batch",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"transaccion_ids\": [\n    \"{{TRANSACCION_ID}}\"\n  ]\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/tesoreria/liquidar", "host": ["{{BASE_URL}}"], "path": ["api", "tesoreria", "liquidar"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": [
-                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('ok es true', () => pm.expect(pm.response.json().ok).to.be.true);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "6. Liquidación - Array vacío (debe dar 422)",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Api-Key", "value": "{{API_KEY_BOLETAS}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"transaccion_ids\": []\n}"
-            },
-            "url": { "raw": "{{BASE_URL}}/api/tesoreria/liquidar", "host": ["{{BASE_URL}}"], "path": ["api", "tesoreria", "liquidar"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "exec": ["pm.test('Array vacío - Status 422', () => pm.response.to.have.status(422));"]
-              }
-            }
-          ]
-        }
-      ]
+      "name": "Get Transaction",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-Api-Key", "value": "{{API_KEY_TICKETS}}" }
+        ],
+        "url": "{{BASE_URL}}/api/payments/{{TRANSACTION_ID}}"
+      }
     },
     {
-      "name": "📋 Logs",
-      "item": [
-        {
-          "name": "1. Listar Logs BD - Todos",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{BASE_URL}}/api/logs?limit=50", "host": ["{{BASE_URL}}"], "path": ["api", "logs"], "query": [{ "key": "limit", "value": "50" }] }
-          }
+      "name": "Settlement Summary",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-Api-Key", "value": "{{API_KEY_TICKETS}}" }
+        ],
+        "url": "{{BASE_URL}}/api/settlements/summary"
+      }
+    },
+    {
+      "name": "Settlement Report",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-Api-Key", "value": "{{API_KEY_TICKETS}}" }
+        ],
+        "url": "{{BASE_URL}}/api/settlements/report"
+      }
+    },
+    {
+      "name": "Settle Transactions",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Api-Key", "value": "{{API_KEY_TICKETS}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"transactionIds\": [\n    \"{{TRANSACTION_ID}}\"\n  ]\n}"
         },
-        {
-          "name": "2. Listar Logs BD - Por Transacción",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{BASE_URL}}/api/logs?transaccion_id={{TRANSACCION_ID}}",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "logs"],
-              "query": [{ "key": "transaccion_id", "value": "{{TRANSACCION_ID}}" }]
-            }
-          }
-        },
-        {
-          "name": "3. Listar Logs BD - Solo Errores",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{BASE_URL}}/api/logs?nivel=ERROR&limit=20",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "logs"],
-              "query": [{ "key": "nivel", "value": "ERROR" }, { "key": "limit", "value": "20" }]
-            }
-          }
-        },
-        {
-          "name": "4. Leer Archivo Log - Combined (últimas 50 líneas)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{BASE_URL}}/api/logs/archivo?tipo=combined&lineas=50",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "logs", "archivo"],
-              "query": [{ "key": "tipo", "value": "combined" }, { "key": "lineas", "value": "50" }]
-            }
-          }
-        },
-        {
-          "name": "5. Leer Archivo Log - Solo Errores",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{BASE_URL}}/api/logs/archivo?tipo=error&lineas=20",
-              "host": ["{{BASE_URL}}"],
-              "path": ["api", "logs", "archivo"],
-              "query": [{ "key": "tipo", "value": "error" }, { "key": "lineas", "value": "20" }]
-            }
-          }
-        }
-      ]
+        "url": "{{BASE_URL}}/api/settlements/settle"
+      }
+    },
+    {
+      "name": "List Logs",
+      "request": {
+        "method": "GET",
+        "url": "{{BASE_URL}}/api/logs?transactionId={{TRANSACTION_ID}}"
+      }
     }
   ]
 }

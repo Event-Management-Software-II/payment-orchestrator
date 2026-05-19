@@ -1,22 +1,30 @@
-const { LogTransaccion } = require('../models');
+const prisma = require('../prisma');
 const logger = require('../utils/logger');
 
-const registrarLog = async ({ transaccion_id, nivel = 'INFO', evento, detalle = {}, ip_origen }) => {
+const createTransactionLog = async ({
+  transactionId,
+  level = 'INFO',
+  event,
+  details = {},
+  sourceIp,
+}) => {
   try {
-    await LogTransaccion.create({ transaccion_id, nivel, evento, detalle, ip_origen });
-  } catch (err) {
-    logger.error('No se pudo guardar log en BD', { error: err.message });
+    await prisma.transactionLog.create({
+      data: { transactionId, level, event, details, sourceIp },
+    });
+  } catch (error) {
+    logger.error('Failed to save transaction log in database', { error: error.message });
   }
-  // También al archivo de winston
-  logger[nivel.toLowerCase()]?.(evento, { transaccion_id, ...detalle });
+
+  logger[level.toLowerCase()]?.(event, { transactionId, ...details });
 };
 
-const obtenerLogs = async (transaccion_id) => {
-  return LogTransaccion.findAll({
-    where: transaccion_id ? { transaccion_id } : {},
-    order: [['createdAt', 'DESC']],
-    limit: 500,
+const getTransactionLogs = async (transactionId) => {
+  return prisma.transactionLog.findMany({
+    where: transactionId ? { transactionId } : undefined,
+    orderBy: { createdAt: 'desc' },
+    take: 500,
   });
 };
 
-module.exports = { registrarLog, obtenerLogs };
+module.exports = { createTransactionLog, getTransactionLogs };

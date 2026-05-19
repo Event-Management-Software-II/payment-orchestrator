@@ -1,41 +1,38 @@
-const { Empresa } = require('../models');
+const prisma = require('../prisma');
 const logger = require('../utils/logger');
 
-/**
- * Middleware: verifica que el header X-Api-Key corresponda
- * a una empresa activa y registrada.
- */
-const autenticarEmpresa = async (req, res, next) => {
+const authenticateCompany = async (req, res, next) => {
   const apiKey = req.headers['x-api-key'];
 
   if (!apiKey) {
     return res.status(401).json({
       ok: false,
-      error: 'Se requiere el header X-Api-Key para autenticarse.',
+      error: 'The X-Api-Key header is required.',
     });
   }
 
   try {
-    const empresa = await Empresa.findOne({ where: { api_key: apiKey, activa: true } });
+    const company = await prisma.company.findFirst({
+      where: { apiKey, isActive: true },
+    });
 
-    if (!empresa) {
-      logger.warn('Intento de acceso con API key inválida o empresa inactiva', {
-        api_key_prefix: apiKey.slice(0, 10) + '...',
+    if (!company) {
+      logger.warn('Access attempt with invalid API key or inactive company', {
+        apiKeyPrefix: apiKey.slice(0, 10) + '...',
         ip: req.ip,
       });
       return res.status(403).json({
         ok: false,
-        error: 'API Key inválida o empresa no autorizada.',
+        error: 'Invalid API key or unauthorized company.',
       });
     }
 
-    // Adjuntar empresa al request para uso posterior
-    req.empresa = empresa;
+    req.company = company;
     next();
   } catch (error) {
-    logger.error('Error en autenticación de empresa', { error: error.message });
-    res.status(500).json({ ok: false, error: 'Error interno de autenticación.' });
+    logger.error('Company authentication failed', { error: error.message });
+    res.status(500).json({ ok: false, error: 'Internal authentication error.' });
   }
 };
 
-module.exports = { autenticarEmpresa };
+module.exports = { authenticateCompany };

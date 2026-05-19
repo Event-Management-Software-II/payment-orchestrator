@@ -4,46 +4,36 @@ const logger = require('../utils/logger');
 const VISA_URL = process.env.VISA_SERVICE_URL || 'http://localhost:3001';
 const MASTERCARD_URL = process.env.MASTERCARD_SERVICE_URL || 'http://localhost:3002';
 
-/**
- * Detecta el tipo de tarjeta según el primer dígito del PAN.
- * Visa: empieza en 4
- * Mastercard: empieza en 5
- */
-const detectarTipoTarjeta = (pan) => {
-  const panStr = String(pan).replace(/\s/g, '');
-  if (panStr.startsWith('4')) return 'VISA';
-  if (panStr.startsWith('5')) return 'MASTERCARD';
+const detectCardType = (pan) => {
+  const cleanPan = String(pan).replace(/\s/g, '');
+  if (cleanPan.startsWith('4')) return 'VISA';
+  if (cleanPan.startsWith('5')) return 'MASTERCARD';
   return null;
 };
 
-/**
- * Enmascara el PAN mostrando solo los últimos 4 dígitos.
- */
-const enmascararPAN = (pan) => {
-  const panStr = String(pan).replace(/\s/g, '');
-  return `****${panStr.slice(-4)}`;
+const maskPan = (pan) => {
+  const cleanPan = String(pan).replace(/\s/g, '');
+  return `****${cleanPan.slice(-4)}`;
 };
 
-/**
- * Consulta si un cliente está registrado en el servicio de tarjetas.
- */
-const verificarClienteRegistrado = async (tipoTarjeta, pan, cvv) => {
-  const url = tipoTarjeta === 'VISA' ? VISA_URL : MASTERCARD_URL;
-  const serviceName = tipoTarjeta === 'VISA' ? 'Visa' : 'Mastercard';
+const getProviderUrl = (cardType) => (cardType === 'VISA' ? VISA_URL : MASTERCARD_URL);
+
+const verifyRegisteredCustomer = async (cardType, pan, cvv) => {
+  const providerUrl = getProviderUrl(cardType);
 
   try {
-    logger.info(`Verificando cliente en servicio ${serviceName}`, {
-      tipo_tarjeta: tipoTarjeta,
-      pan_enmascarado: enmascararPAN(pan),
+    logger.info(`Verifying customer in ${cardType} service`, {
+      cardType,
+      maskedPan: maskPan(pan),
     });
 
     const response = await axios.post(
-      `${url}/api/validate`,
+      `${providerUrl}/api/validate`,
       { pan, cvv },
       { timeout: 10000, headers: { 'Content-Type': 'application/json' } }
     );
 
-    logger.info(`Respuesta de ${serviceName}`, {
+    logger.info(`${cardType} validation response`, {
       status: response.status,
       data: response.data,
     });
@@ -53,69 +43,62 @@ const verificarClienteRegistrado = async (tipoTarjeta, pan, cvv) => {
     const status = error.response?.status;
     const data = error.response?.data;
 
-    logger.warn(`Error al consultar servicio ${serviceName}`, {
+    logger.warn(`Failed to validate customer in ${cardType} service`, {
       status,
       data,
       message: error.message,
     });
 
-    // Si el servicio responde con 404 o similar = cliente no registrado
     if (status === 404 || status === 422) {
-      return { ok: false, data, rechazado: true };
+      return { ok: false, data, rejected: true };
     }
 
-    // Error de conectividad u otro
-    return { ok: false, data, rechazado: false, error: error.message };
+    return { ok: false, data, rejected: false, error: error.message };
   }
 };
 
-/**
- * Envía la solicitud de pago al servicio de tarjetas correspondiente.
- */
-const procesarPagoEnServicio = async (tipoTarjeta, payload) => {
-  const url = tipoTarjeta === 'VISA' ? VISA_URL : MASTERCARD_URL;
-  const serviceName = tipoTarjeta === 'VISA' ? 'Visa' : 'Mastercard';
+const chargeProvider = async (cardType, payload) => {
+  const providerUrl = getProviderUrl(cardType);
 
   try {
-    logger.info(`Enviando pago a servicio ${serviceName}`, {
-      tipo_tarjeta: tipoTarjeta,
-      monto: payload.monto,
-      pan_enmascarado: enmascararPAN(payload.pan),
+    logger.info(`Sending charge to ${cardType} service`, {
+      cardType,
+      amount: payload.amount,
+      maskedPan: maskPan(payload.pan),
     });
 
-    const response = await axios.post(
-      `${url}/api/charge`,
-      payload,
-      { timeout: 15000, headers: { 'Content-Type': 'application/json' } }
-    );
+    const response = await axios.post(`${providerUrl}/api/charge`, payload, {
+      timeout: 15000,
+      headers: { 'Content-Type': 'application/json' },
+    });
 
-    logger.info(`Pago aprobado por ${serviceName}`, {
+    logger.info(`${cardType} payment approved`, {
       status: response.status,
       data: response.data,
     });
 
-    return { ok: true, aprobado: true, data: response.data };
+    return { ok: true, approved: true, data: response.data };
   } catch (error) {
     const status = error.response?.status;
     const data = error.response?.data;
 
-    logger.warn(`Pago rechazado/error en ${serviceName}`, {
+    logger.warn(`${cardType} payment rejected or failed`, {
       status,
       data,
       message: error.message,
     });
 
     if (status === 402 || status === 422 || status === 400) {
-      return { ok: false, aprobado: false, data };
+      return { ok: false, approved: false, data };
     }
 
-    return { ok: false, aprobado: false, error: error.message, data };
+    return { ok: false, approved: false, error: error.message, data };
   }
 };
 
 module.exports = {
-  detectarTipoTarjeta,
-  enmascararPAN,
-  verificarClienteRegistrado,
-  procesarPagoEnServicio,
+  detectCardType,
+  maskPan,
+  verifyRegisteredCustomer,
+  chargeProvider,
 };

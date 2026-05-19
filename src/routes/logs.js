@@ -1,9 +1,10 @@
 const express = require('express');
-const router = express.Router();
-const { listarLogs, leerArchivoLog } = require('../controllers/logController');
+const { listLogs, readLogFile } = require('../controllers/logController');
 
-// Sin autenticación de empresa para uso interno/admin
-router.get('/', listarLogs);
-router.get('/archivo', leerArchivoLog);
+const router = express.Router();
+
+router.get('/', listLogs);
+router.get('/file', readLogFile);
+router.get('/archivo', readLogFile);
 
 module.exports = router;

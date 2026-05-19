@@ -1,0 +1,84 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum CardType {
+  VISA
+  MASTERCARD
+}
+
+enum TransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  UNSETTLED
+  SETTLED
+}
+
+enum LogLevel {
+  INFO
+  WARN
+  ERROR
+}
+
+model Company {
+  id           String               @id @default(uuid())
+  name         String
+  taxId        String               @unique
+  isActive     Boolean              @default(true)
+  apiKey       String               @unique
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  transactions PaymentTransaction[]
+
+  @@map("companies")
+}
+
+model PaymentTransaction {
+  id               String            @id @default(uuid())
+  companyId        String
+  externalReference String           @unique
+  amount           Decimal
+  currency         String            @default("COP")
+  cardType         CardType
+  maskedPan        String
+  cardHolder       String
+  status           TransactionStatus @default(UNSETTLED)
+  providerResponse Json?
+  transactionDate  DateTime          @default(now())
+  settlementDate   DateTime?
+  description      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  company Company          @relation(fields: [companyId], references: [id])
+  logs    TransactionLog[]
+
+  @@index([companyId])
+  @@index([status])
+  @@index([transactionDate])
+  @@map("payment_transactions")
+}
+
+model TransactionLog {
+  id            String              @id @default(uuid())
+  transactionId String?
+  level         LogLevel            @default(INFO)
+  event         String
+  details       Json?
+  sourceIp      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  transaction PaymentTransaction? @relation(fields: [transactionId], references: [id])
+
+  @@index([transactionId])
+  @@index([level])
+  @@index([createdAt])
+  @@map("transaction_logs")
+}
