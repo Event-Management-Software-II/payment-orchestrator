@@ -35,11 +35,6 @@ const validatePayment = [
     .withMessage('cvv is required.')
     .matches(/^\d{3,4}$/)
     .withMessage('cvv must have 3 or 4 digits.'),
-  body('expiry')
-    .notEmpty()
-    .withMessage('expiry is required.')
-    .matches(/^(0[1-9]|1[0-2])\/\d{2}$/)
-    .withMessage('expiry must be in MM/YY format.'),
   body('cardHolder')
     .notEmpty()
     .withMessage('cardHolder is required.')

@@ -13,7 +13,6 @@ const readPaymentPayload = (body) => ({
   currency: body.currency ?? 'COP',
   pan: body.pan,
   cvv: body.cvv,
-  expiry: body.expiry,
   cardHolder: body.cardHolder,
   externalReference: body.externalReference,
   description: body.description,
@@ -25,7 +24,6 @@ const processPayment = async (req, res) => {
     currency,
     pan,
     cvv,
-    expiry,
     cardHolder,
     externalReference,
     description,
@@ -43,7 +41,7 @@ const processPayment = async (req, res) => {
     });
     return res.status(422).json({
       ok: false,
-      error: 'Unsupported card type. Only Visa (4xxx) and Mastercard (5xxx) are accepted.',
+      error: 'Unsupported card type. Only Nu/Visa (4xxx) and Mastercard (5xxx) are accepted.',
     });
   }
 
@@ -66,7 +64,7 @@ const processPayment = async (req, res) => {
     });
   }
 
-  const customerValidation = await verifyRegisteredCustomer(cardType, pan, cvv, expiry);
+  const customerValidation = await verifyRegisteredCustomer(cardType, pan, cvv);
 
   if (!customerValidation.ok) {
     await createTransactionLog({
@@ -133,7 +131,6 @@ const processPayment = async (req, res) => {
   const paymentResult = await chargeProvider(cardType, {
     pan,
     cvv,
-    expiry,
     amount,
     currency,
     cardHolder,
