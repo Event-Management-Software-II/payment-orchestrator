@@ -3,6 +3,8 @@ require('dotenv').config();
 const cors = require('cors');
 const express = require('express');
 const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
+const swaggerDefinition = require('./swagger');
 const prisma = require('./prisma');
 const logger = require('./utils/logger');
 
@@ -18,6 +20,8 @@ app.use(
     stream: { write: (message) => logger.info(message.trim(), { type: 'HTTP' }) },
   })
 );
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDefinition));
 
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/settlements', require('./routes/settlements'));
