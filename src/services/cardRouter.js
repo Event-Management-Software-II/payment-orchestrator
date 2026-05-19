@@ -18,7 +18,7 @@ const maskPan = (pan) => {
 
 const getProviderUrl = (cardType) => (cardType === 'VISA' ? VISA_URL : MASTERCARD_URL);
 
-const verifyRegisteredCustomer = async (cardType, pan, cvv) => {
+const verifyRegisteredCustomer = async (cardType, pan, cvv, expiry) => {
   const providerUrl = getProviderUrl(cardType);
 
   try {
@@ -29,7 +29,7 @@ const verifyRegisteredCustomer = async (cardType, pan, cvv) => {
 
     const response = await axios.post(
       `${providerUrl}/api/validate`,
-      { pan, cvv },
+      { pan, cvv, expiry },
       { timeout: 10000, headers: { 'Content-Type': 'application/json' } }
     );
 

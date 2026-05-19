@@ -13,6 +13,7 @@ const readPaymentPayload = (body) => ({
   currency: body.currency ?? 'COP',
   pan: body.pan,
   cvv: body.cvv,
+  expiry: body.expiry,
   cardHolder: body.cardHolder,
   externalReference: body.externalReference,
   description: body.description,
@@ -24,6 +25,7 @@ const processPayment = async (req, res) => {
     currency,
     pan,
     cvv,
+    expiry,
     cardHolder,
     externalReference,
     description,
@@ -64,7 +66,7 @@ const processPayment = async (req, res) => {
     });
   }
 
-  const customerValidation = await verifyRegisteredCustomer(cardType, pan, cvv);
+  const customerValidation = await verifyRegisteredCustomer(cardType, pan, cvv, expiry);
 
   if (!customerValidation.ok) {
     await createTransactionLog({
@@ -131,6 +133,7 @@ const processPayment = async (req, res) => {
   const paymentResult = await chargeProvider(cardType, {
     pan,
     cvv,
+    expiry,
     amount,
     currency,
     cardHolder,
