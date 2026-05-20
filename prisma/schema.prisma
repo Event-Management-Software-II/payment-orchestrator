@@ -27,53 +27,75 @@ enum LogLevel {
 }
 
 model Company {
-  id           String               @id @default(uuid())
-  name         String
-  taxId        String               @unique
-  isActive     Boolean              @default(true)
-  apiKey       String               @unique
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id             String   @id @default(uuid())
+  name           String
+  taxId          String   @unique
+  isActive       Boolean  @default(true)
+  apiKey         String   @unique
+  commissionRate Float    @default(0.02)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
   transactions PaymentTransaction[]
+  settlements  Settlement[]
 
   @@map("companies")
 }
 
 model PaymentTransaction {
-  id               String            @id @default(uuid())
-  companyId        String
-  externalReference String           @unique
-  amount           Decimal
-  currency         String            @default("COP")
-  cardType         CardType
-  maskedPan        String
-  cardHolder       String
-  status           TransactionStatus @default(UNSETTLED)
-  providerResponse Json?
-  transactionDate  DateTime          @default(now())
-  settlementDate   DateTime?
-  description      String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String            @id @default(uuid())
+  companyId         String
+  externalReference String            @unique
+  amount            Decimal
+  currency          String            @default("COP")
+  cardType          CardType
+  maskedPan         String
+  cardHolder        String
+  status            TransactionStatus @default(UNSETTLED)
+  providerResponse  Json?
+  transactionDate   DateTime          @default(now())
+  settlementDate    DateTime?
+  settlementId      String?
+  description       String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  company Company          @relation(fields: [companyId], references: [id])
-  logs    TransactionLog[]
+  company    Company          @relation(fields: [companyId], references: [id])
+  settlement Settlement?      @relation(fields: [settlementId], references: [id])
+  logs       TransactionLog[]
 
   @@index([companyId])
   @@index([status])
   @@index([transactionDate])
+  @@index([settlementId])
   @@map("payment_transactions")
 }
 
+model Settlement {
+  id               String   @id @default(uuid())
+  companyId        String
+  transactionCount Int
+  commissionRate   Float
+  breakdown        Json
+  settledAt        DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  company      Company              @relation(fields: [companyId], references: [id])
+  transactions PaymentTransaction[]
+
+  @@index([companyId])
+  @@map("settlements")
+}
+
 model TransactionLog {
-  id            String              @id @default(uuid())
+  id            String   @id @default(uuid())
   transactionId String?
-  level         LogLevel            @default(INFO)
+  level         LogLevel @default(INFO)
   event         String
   details       Json?
   sourceIp      String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   transaction PaymentTransaction? @relation(fields: [transactionId], references: [id])
 

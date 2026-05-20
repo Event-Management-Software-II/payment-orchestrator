@@ -158,7 +158,9 @@ const swaggerDefinition = {
     '/api/settlements/settle': {
       post: {
         tags: ['Liquidaciones'],
-        summary: 'Liquidar un conjunto de transacciones aprobadas',
+        summary: 'Liquidar transacciones aprobadas y calcular comisión',
+        description:
+          'Marca las transacciones como SETTLED, calcula la comisión de la pasarela según la tasa configurada en la empresa, y crea un registro de liquidación con el desglose por moneda.',
         security: [{ apiKey: [] }],
         requestBody: {
           required: true,
@@ -181,7 +183,7 @@ const swaggerDefinition = {
         },
         responses: {
           200: {
-            description: 'Liquidación procesada',
+            description: 'Liquidación procesada con desglose de comisión',
             content: {
               'application/json': {
                 schema: {
@@ -189,31 +191,80 @@ const swaggerDefinition = {
                   properties: {
                     ok: { type: 'boolean' },
                     message: { type: 'string' },
+                    settlementId: { type: 'string', format: 'uuid' },
                     settled: { type: 'integer', description: 'Cantidad de transacciones liquidadas' },
-                    notProcessed: { type: 'array', items: { type: 'string' }, description: 'IDs no liquidados' },
-                    settlementDate: { type: 'string', format: 'date-time' },
+                    notProcessed: { type: 'array', items: { type: 'string' }, description: 'IDs no procesados' },
+                    commissionRate: { type: 'number', example: 0.02, description: 'Tasa de comisión aplicada (ej. 0.02 = 2%)' },
+                    breakdown: {
+                      type: 'array',
+                      description: 'Desglose de comisión por moneda',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          currency: { type: 'string', example: 'COP' },
+                          grossAmount: { type: 'number', example: 500000, description: 'Monto bruto total' },
+                          commissionAmount: { type: 'number', example: 10000, description: 'Comisión de la pasarela' },
+                          netAmount: { type: 'number', example: 490000, description: 'Neto a recibir por la empresa' },
+                        },
+                      },
+                    },
+                    settledAt: { type: 'string', format: 'date-time' },
                   },
                 },
               },
             },
           },
           400: { description: 'Lista de IDs vacía o inválida' },
+          404: { description: 'No se encontraron transacciones APPROVED con esos IDs' },
         },
       },
     },
 
-    '/api/settlements/report': {
+    '/api/settlements': {
       get: {
         tags: ['Liquidaciones'],
-        summary: 'Reporte de liquidaciones',
+        summary: 'Listar todas las liquidaciones de la empresa',
         security: [{ apiKey: [] }],
-        parameters: [
-          { in: 'query', name: 'startDate', schema: { type: 'string', format: 'date-time' }, description: 'Fecha de inicio (ISO 8601)' },
-          { in: 'query', name: 'endDate', schema: { type: 'string', format: 'date-time' }, description: 'Fecha de fin (ISO 8601)' },
-        ],
         responses: {
           200: {
-            description: 'Reporte de liquidaciones',
+            description: 'Historial de liquidaciones',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    ok: { type: 'boolean' },
+                    company: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        name: { type: 'string' },
+                        commissionRate: { type: 'number', example: 0.02 },
+                      },
+                    },
+                    total: { type: 'integer' },
+                    settlements: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/Settlement' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/settlements/{id}': {
+      get: {
+        tags: ['Liquidaciones'],
+        summary: 'Obtener detalle de una liquidación',
+        security: [{ apiKey: [] }],
+        parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          200: {
+            description: 'Detalle de liquidación con transacciones',
             content: {
               'application/json': {
                 schema: {
@@ -221,8 +272,72 @@ const swaggerDefinition = {
                   properties: {
                     ok: { type: 'boolean' },
                     company: { type: 'object' },
+                    settlement: {
+                      allOf: [
+                        { $ref: '#/components/schemas/Settlement' },
+                        {
+                          type: 'object',
+                          properties: {
+                            transactions: { type: 'array', items: { $ref: '#/components/schemas/Transaction' } },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+          },
+          404: { description: 'Liquidación no encontrada' },
+        },
+      },
+    },
+
+    '/api/settlements/report': {
+      get: {
+        tags: ['Liquidaciones'],
+        summary: 'Reporte de transacciones pendientes de liquidar con comisión proyectada',
+        security: [{ apiKey: [] }],
+        parameters: [
+          { in: 'query', name: 'startDate', schema: { type: 'string', format: 'date-time' }, description: 'Fecha de inicio (ISO 8601)' },
+          { in: 'query', name: 'endDate', schema: { type: 'string', format: 'date-time' }, description: 'Fecha de fin (ISO 8601)' },
+        ],
+        responses: {
+          200: {
+            description: 'Reporte con proyección de comisiones',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    ok: { type: 'boolean' },
+                    company: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        name: { type: 'string' },
+                        commissionRate: { type: 'number', example: 0.02 },
+                      },
+                    },
                     filters: { type: 'object', properties: { startDate: { type: 'string' }, endDate: { type: 'string' } } },
-                    summary: { type: 'object', properties: { totalSettled: { type: 'integer' }, totalAmount: { type: 'number' } } },
+                    summary: {
+                      type: 'object',
+                      properties: {
+                        totalTransactions: { type: 'integer' },
+                        projectedCommission: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              currency: { type: 'string' },
+                              grossAmount: { type: 'number' },
+                              commissionAmount: { type: 'number' },
+                              netAmount: { type: 'number' },
+                            },
+                          },
+                        },
+                      },
+                    },
                     transactions: { type: 'array', items: { $ref: '#/components/schemas/Transaction' } },
                   },
                 },
@@ -236,18 +351,25 @@ const swaggerDefinition = {
     '/api/settlements/summary': {
       get: {
         tags: ['Liquidaciones'],
-        summary: 'Resumen de estadísticas de la empresa',
+        summary: 'Resumen global de transacciones y comisión total cobrada',
         security: [{ apiKey: [] }],
         responses: {
           200: {
-            description: 'Resumen por estado de transacción',
+            description: 'Estadísticas por estado con totales de comisión',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     ok: { type: 'boolean' },
-                    company: { type: 'object' },
+                    company: {
+                      type: 'object',
+                      properties: {
+                        id: { type: 'string' },
+                        name: { type: 'string' },
+                        commissionRate: { type: 'number', example: 0.02 },
+                      },
+                    },
                     stats: {
                       type: 'array',
                       items: {
@@ -257,6 +379,15 @@ const swaggerDefinition = {
                           count: { type: 'integer' },
                           total: { type: 'number' },
                         },
+                      },
+                    },
+                    commissionSummary: {
+                      type: 'object',
+                      description: 'Resumen de comisiones sobre transacciones SETTLED',
+                      properties: {
+                        settledGross: { type: 'number', example: 2000000 },
+                        totalCommissionEarned: { type: 'number', example: 40000, description: 'Comisión total ganada por la pasarela' },
+                        totalNetPaidToCompany: { type: 'number', example: 1960000, description: 'Neto total pagado a la empresa' },
                       },
                     },
                   },
